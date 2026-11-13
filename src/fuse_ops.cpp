@@ -25,15 +25,15 @@ static int kfs_getattr(const char* path, struct stat* stbuf, struct fuse_file_in
 
     const char* filename = path + 1;
 
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (g_kry_inodes[i].is_used && std::strcmp(g_kry_inodes[i].filename, filename) == 0) {
-            if (g_kry_inodes[i].is_directory) {
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (g_lnr_inodes[i].is_used && std::strcmp(g_lnr_inodes[i].filename, filename) == 0) {
+            if (g_lnr_inodes[i].is_directory) {
                 stbuf->st_mode = S_IFDIR | 0755;
                 stbuf->st_nlink = 2;
             } else {
                 stbuf->st_mode = S_IFREG | 0644;
                 stbuf->st_nlink = 1;
-                stbuf->st_size = g_kry_inodes[i].size;
+                stbuf->st_size = g_lnr_inodes[i].size;
             }
             return 0;
         }
@@ -54,9 +54,9 @@ static int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 
     if (!dir_path.empty()) {
         bool dir_found = false;
-        for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-            if (g_kry_inodes[i].is_used && g_kry_inodes[i].is_directory) {
-                if (std::strcmp(g_kry_inodes[i].filename, dir_path.c_str()) == 0) {
+        for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+            if (g_lnr_inodes[i].is_used && g_lnr_inodes[i].is_directory) {
+                if (std::strcmp(g_lnr_inodes[i].filename, dir_path.c_str()) == 0) {
                     dir_found = true;
                     break;
                 }
@@ -74,9 +74,9 @@ static int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 
     std::string prefix = dir_path.empty() ? "" : dir_path + "/";
 
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (g_kry_inodes[i].is_used) {
-            std::string fname(g_kry_inodes[i].filename);
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (g_lnr_inodes[i].is_used) {
+            std::string fname(g_lnr_inodes[i].filename);
             std::string sub_name;
 
             if (prefix.empty()) {
@@ -108,11 +108,11 @@ static int kfs_read(const char* path, char* buf, size_t size, off_t offset,
     }
 
     LnrfsInode* target_inode = nullptr;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        g_kry_inodes[i].filename[sizeof(g_kry_inodes[i].filename) - 1] = '\0';
-        if (g_kry_inodes[i].is_used && !g_kry_inodes[i].is_directory) {
-            if (std::strcmp(g_kry_inodes[i].filename, target_path.c_str()) == 0) {
-                target_inode = &g_kry_inodes[i];
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        g_lnr_inodes[i].filename[sizeof(g_lnr_inodes[i].filename) - 1] = '\0';
+        if (g_lnr_inodes[i].is_used && !g_lnr_inodes[i].is_directory) {
+            if (std::strcmp(g_lnr_inodes[i].filename, target_path.c_str()) == 0) {
+                target_inode = &g_lnr_inodes[i];
                 break;
             }
         }
@@ -163,23 +163,23 @@ static bool ranges_overlap(uint32_t first_start, uint32_t first_blocks,
 }
 
 static uint32_t find_free_extent(uint32_t required_blocks, int excluded_inode) {
-    if (required_blocks == 0 || required_blocks > g_kry_sb.total_blocks) return 0;
+    if (required_blocks == 0 || required_blocks > g_lnr_sb.total_blocks) return 0;
 
-    uint32_t first_data_block = g_kry_sb.data_block_start;
-    uint32_t last_start = g_kry_sb.total_blocks - required_blocks;
+    uint32_t first_data_block = g_lnr_sb.data_block_start;
+    uint32_t last_start = g_lnr_sb.total_blocks - required_blocks;
 
     for (uint32_t candidate = first_data_block; candidate <= last_start; candidate++) {
         bool occupied = false;
-        for (size_t i = 0; i < g_kry_inodes.size(); i++) {
+        for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
             if (static_cast<int>(i) == excluded_inode ||
-                !g_kry_inodes[i].is_used || g_kry_inodes[i].is_directory) {
+                !g_lnr_inodes[i].is_used || g_lnr_inodes[i].is_directory) {
                 continue;
             }
 
-            uint32_t existing_blocks = blocks_for_size(g_kry_inodes[i].size);
+            uint32_t existing_blocks = blocks_for_size(g_lnr_inodes[i].size);
             if (existing_blocks > 0 &&
                 ranges_overlap(candidate, required_blocks,
-                               g_kry_inodes[i].start_block, existing_blocks)) {
+                               g_lnr_inodes[i].start_block, existing_blocks)) {
                 occupied = true;
                 break;
             }
@@ -194,7 +194,7 @@ static uint32_t find_free_extent(uint32_t required_blocks, int excluded_inode) {
 static bool ensure_file_extent(LnrfsInode* inode, int inode_index, uint64_t required_size) {
     uint32_t required_blocks = blocks_for_size(required_size);
     if (required_size > std::numeric_limits<uint32_t>::max() ||
-        required_blocks > g_kry_sb.total_blocks - g_kry_sb.data_block_start) {
+        required_blocks > g_lnr_sb.total_blocks - g_lnr_sb.data_block_start) {
         return false;
     }
 
@@ -205,7 +205,7 @@ static bool ensure_file_extent(LnrfsInode* inode, int inode_index, uint64_t requ
     }
 
     if (current_blocks >= required_blocks &&
-        inode->start_block >= g_kry_sb.data_block_start) {
+        inode->start_block >= g_lnr_sb.data_block_start) {
         return true;
     }
 
@@ -214,7 +214,7 @@ static bool ensure_file_extent(LnrfsInode* inode, int inode_index, uint64_t requ
 
     std::vector<char> old_data(inode->size);
     if (inode->size > 0) {
-        if (inode->start_block < g_kry_sb.data_block_start ||
+        if (inode->start_block < g_lnr_sb.data_block_start ||
             std::fseek(g_img_file, inode->start_block * BLOCK_SIZE, SEEK_SET) != 0 ||
             std::fread(old_data.data(), 1, old_data.size(), g_img_file) != old_data.size()) {
             return false;
@@ -235,10 +235,10 @@ static LnrfsInode* find_inode_by_path(const char* path) {
     std::string target_path = path;
     if (target_path.rfind('/', 0) == 0) target_path = target_path.substr(1);
 
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (g_kry_inodes[i].is_used &&
-            std::strcmp(g_kry_inodes[i].filename, target_path.c_str()) == 0) {
-            return &g_kry_inodes[i];
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (g_lnr_inodes[i].is_used &&
+            std::strcmp(g_lnr_inodes[i].filename, target_path.c_str()) == 0) {
+            return &g_lnr_inodes[i];
         }
     }
 
@@ -268,7 +268,7 @@ static int kfs_truncate(const char* path, off_t size, struct fuse_file_info* fi)
 
     uint32_t old_size = inode->size;
     uint32_t new_size = static_cast<uint32_t>(size);
-    int inode_index = static_cast<int>(inode - g_kry_inodes.data());
+    int inode_index = static_cast<int>(inode - g_lnr_inodes.data());
     if (!ensure_file_extent(inode, inode_index, new_size)) return -ENOSPC;
 
     if (new_size > old_size) {
@@ -302,8 +302,8 @@ static int kfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
     if (std::strlen(filename) >= LNRFS_MAX_FILENAME) return -ENAMETOOLONG;
 
     int free_index = -1;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (!g_kry_inodes[i].is_used) {
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (!g_lnr_inodes[i].is_used) {
             free_index = i;
             break;
         }
@@ -311,14 +311,14 @@ static int kfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) 
 
     if (free_index == -1) return -ENOSPC;
 
-    g_kry_inodes[free_index].is_used = 1;
-    g_kry_inodes[free_index].is_directory = 0;
-    g_kry_inodes[free_index].size = 0;
+    g_lnr_inodes[free_index].is_used = 1;
+    g_lnr_inodes[free_index].is_directory = 0;
+    g_lnr_inodes[free_index].size = 0;
     
-    g_kry_inodes[free_index].start_block = 0;
+    g_lnr_inodes[free_index].start_block = 0;
     
-    std::strncpy(g_kry_inodes[free_index].filename, filename, LNRFS_MAX_FILENAME - 1);
-    g_kry_inodes[free_index].filename[LNRFS_MAX_FILENAME - 1] = '\0';
+    std::strncpy(g_lnr_inodes[free_index].filename, filename, LNRFS_MAX_FILENAME - 1);
+    g_lnr_inodes[free_index].filename[LNRFS_MAX_FILENAME - 1] = '\0';
 
     lnrfs_save_image();
     return 0;
@@ -333,11 +333,11 @@ static int kfs_write(const char* path, const char* buf, size_t size, off_t offse
     }
 
     LnrfsInode* target_inode = nullptr;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        g_kry_inodes[i].filename[sizeof(g_kry_inodes[i].filename) - 1] = '\0';
-        if (g_kry_inodes[i].is_used && !g_kry_inodes[i].is_directory) {
-            if (std::strcmp(g_kry_inodes[i].filename, target_path.c_str()) == 0) {
-                target_inode = &g_kry_inodes[i];
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        g_lnr_inodes[i].filename[sizeof(g_lnr_inodes[i].filename) - 1] = '\0';
+        if (g_lnr_inodes[i].is_used && !g_lnr_inodes[i].is_directory) {
+            if (std::strcmp(g_lnr_inodes[i].filename, target_path.c_str()) == 0) {
+                target_inode = &g_lnr_inodes[i];
                 break;
             }
         }
@@ -351,7 +351,7 @@ static int kfs_write(const char* path, const char* buf, size_t size, off_t offse
         return -EFBIG;
     }
 
-    int inode_index = static_cast<int>(target_inode - g_kry_inodes.data());
+    int inode_index = static_cast<int>(target_inode - g_lnr_inodes.data());
     uint64_t required_size = static_cast<uint64_t>(offset) + size;
     uint32_t old_size = target_inode->size;
     if (!ensure_file_extent(target_inode, inode_index, required_size)) return -ENOSPC;
@@ -397,12 +397,12 @@ static int kfs_write(const char* path, const char* buf, size_t size, off_t offse
 // Dosya silme
 static int kfs_unlink(const char* path) {
     const char* filename = path + 1;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (g_kry_inodes[i].is_used && std::strcmp(g_kry_inodes[i].filename, filename) == 0) {
-            g_kry_inodes[i].is_used = 0;
-            g_kry_inodes[i].size = 0;
-            g_kry_inodes[i].start_block = 0;
-            g_kry_inodes[i].filename[0] = '\0';
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (g_lnr_inodes[i].is_used && std::strcmp(g_lnr_inodes[i].filename, filename) == 0) {
+            g_lnr_inodes[i].is_used = 0;
+            g_lnr_inodes[i].size = 0;
+            g_lnr_inodes[i].start_block = 0;
+            g_lnr_inodes[i].filename[0] = '\0';
             lnrfs_save_image();
             return 0;
         }
@@ -412,12 +412,12 @@ static int kfs_unlink(const char* path) {
 
 static int kfs_rmdir(const char* path) {
     const char* dirname = path + 1;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (g_kry_inodes[i].is_used && g_kry_inodes[i].is_directory && std::strcmp(g_kry_inodes[i].filename, dirname) == 0) {
-            g_kry_inodes[i].is_used = 0;
-            g_kry_inodes[i].size = 0;
-            g_kry_inodes[i].start_block = 0;
-            g_kry_inodes[i].filename[0] = '\0';
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (g_lnr_inodes[i].is_used && g_lnr_inodes[i].is_directory && std::strcmp(g_lnr_inodes[i].filename, dirname) == 0) {
+            g_lnr_inodes[i].is_used = 0;
+            g_lnr_inodes[i].size = 0;
+            g_lnr_inodes[i].start_block = 0;
+            g_lnr_inodes[i].filename[0] = '\0';
             lnrfs_save_image();
             return 0;
         }
@@ -429,20 +429,20 @@ static int kfs_mkdir(const char* path, mode_t mode) {
     const char* dirname = path + 1;
     if (std::strlen(dirname) >= LNRFS_MAX_FILENAME) return -ENAMETOOLONG;
     int free_index = -1;
-    for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-        if (!g_kry_inodes[i].is_used) {
+    for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+        if (!g_lnr_inodes[i].is_used) {
             free_index = i;
             break;
         }
     }
     if (free_index == -1) return -ENOSPC;
 
-    g_kry_inodes[free_index].is_used = 1;
-    g_kry_inodes[free_index].is_directory = 1;
-    g_kry_inodes[free_index].size = 0;
-    g_kry_inodes[free_index].start_block = 0;
-    std::strncpy(g_kry_inodes[free_index].filename, dirname, LNRFS_MAX_FILENAME - 1);
-    g_kry_inodes[free_index].filename[LNRFS_MAX_FILENAME - 1] = '\0';
+    g_lnr_inodes[free_index].is_used = 1;
+    g_lnr_inodes[free_index].is_directory = 1;
+    g_lnr_inodes[free_index].size = 0;
+    g_lnr_inodes[free_index].start_block = 0;
+    std::strncpy(g_lnr_inodes[free_index].filename, dirname, LNRFS_MAX_FILENAME - 1);
+    g_lnr_inodes[free_index].filename[LNRFS_MAX_FILENAME - 1] = '\0';
 
     lnrfs_save_image();
     return 0;

@@ -38,31 +38,31 @@ int main(int argc, char* argv[]) {
         g_img_file = img_file;
 
         // 2. Superblock alanını kernel formatıyla aynı şekilde doldur.
-        g_kry_sb.magic = LNRFS_MAGIC; // 0x4B525946
-        g_kry_sb.total_blocks = 2048;
-        g_kry_sb.inode_table_block = 1;
-        g_kry_sb.data_block_start = 256;
-
+        g_lnr_sb.magic = LNRFS_MAGIC; // 0x4B525946
+        g_lnr_sb.total_blocks = 2048;
+        g_lnr_sb.inode_table_block = 1;
+        g_lnr_sb.data_block_start = 256;
+d
         size_t inode_table_bytes =
-            (g_kry_sb.data_block_start - g_kry_sb.inode_table_block) * BLOCK_SIZE;
-        g_kry_inodes.clear();
-        g_kry_inodes.resize(inode_table_bytes / sizeof(LnrfsInode));
+            (g_lnr_sb.data_block_start - g_lnr_sb.inode_table_block) * BLOCK_SIZE;
+        g_lnr_inodes.clear();
+        g_lnr_inodes.resize(inode_table_bytes / sizeof(LnrfsInode));
 
         // İmajı toplam blok boyutuna getir.
-        std::fseek(img_file, (g_kry_sb.total_blocks * BLOCK_SIZE) - 1, SEEK_SET);
+        std::fseek(img_file, (g_lnr_sb.total_blocks * BLOCK_SIZE) - 1, SEEK_SET);
         std::fputc(0, img_file);
 
         // 3. Dosyanın başına gidip superblock'u ve sıfır inode tablosunu yaz.
         std::fseek(img_file, 0, SEEK_SET);
-        std::fwrite(&g_kry_sb, sizeof(LnrfsSuperblock), 1, img_file);
+        std::fwrite(&g_lnr_sb, sizeof(LnrfsSuperblock), 1, img_file);
 
         // 4. Global inode tablosunu sıfırla (first_block yerine start_block kullanılıyor)
-        for (size_t i = 0; i < g_kry_inodes.size(); i++) {
-            g_kry_inodes[i].is_used = 0;
-            g_kry_inodes[i].is_directory = 0;
-            g_kry_inodes[i].size = 0;
-            g_kry_inodes[i].start_block = 0;
-            g_kry_inodes[i].filename[0] = '\0';
+        for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
+            g_lnr_inodes[i].is_used = 0;
+            g_lnr_inodes[i].is_directory = 0;
+            g_lnr_inodes[i].size = 0;
+            g_lnr_inodes[i].start_block = 0;
+            g_lnr_inodes[i].filename[0] = '\0';
         }
 
         // 5. Inode tablosunu imaj dosyasına kaydet
