@@ -1,5 +1,5 @@
 # LnrfsMountSystem
-FUSE-based host-side mount and management utility for KryonOS's custom LNRFS file system, enabling direct read/write access.
+FUSE-based host-side mount and management utility for LenorOS's custom LNRFS file system, enabling direct read/write access.
 
 ## Build
 
