@@ -39,7 +39,7 @@ void lnrfs_close_image();
 // Global Disk Yapıları (Dinamik)
 extern std::string g_img_path;
 extern FILE* g_img_file;
-extern LnrfsSuperblock g_kry_sb;
-extern std::vector<LnrfsInode> g_kry_inodes;
+extern LnrfsSuperblock g_lnr_sb;
+extern std::vector<LnrfsInode> g_lnr_inodes;
 
 #endif

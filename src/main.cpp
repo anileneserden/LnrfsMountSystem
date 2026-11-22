@@ -22,41 +22,63 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // FORMAT İŞLEMİ: ./kfs <disk_imaji> --format
+    // FORMAT İŞLEMİ: ./lfs <disk_imaji> --format [boyut_MB]
     if (argc >= 3 && std::string(argv[2]) == "--format") {
         std::string img_path = argv[1];
         std::cout << "[LNRFS] Disk formatlanıyor ve Superblock yazılıyor: " << img_path << std::endl;
 
-        // Format işlemi imajı oluşturur veya mevcut içeriği sıfırlar.
+        // 1. Hedef disk boyutunu belirle:
+        // Argüman olarak MB verildiyse onu kullan, verilmediyse mevcut dosya boyutuna bak,
+        // dosya yoksa veya 1 MiB'dan küçükse varsayılan 1024 MiB (1 GiB) yap.
+        uint64_t target_bytes = 0;
+        if (argc >= 4) {
+            uint64_t mb = std::strtoull(argv[3], nullptr, 10);
+            target_bytes = mb * 1024ULL * 1024ULL;
+        } else {
+            struct stat st;
+            if (stat(img_path.c_str(), &st) == 0 && st.st_size > 1024 * 1024) {
+                target_bytes = static_cast<uint64_t>(st.st_size);
+            } else {
+                target_bytes = 1024ULL * 1024ULL * 1024ULL; // Varsayılan 1 GiB
+            }
+        }
+
+        uint32_t total_blocks = static_cast<uint32_t>(target_bytes / BLOCK_SIZE);
+        if (total_blocks < 512) {
+            std::cerr << "[LNRFS Hata] Disk boyutu çok küçük (en az 256 KB olmalı)." << std::endl;
+            return 1;
+        }
+
+        // wb+ ile sıfırdan oluştur (sparse olarak büyütülecek)
         FILE* img_file = std::fopen(img_path.c_str(), "wb+");
         if (!img_file) {
             std::cerr << "[LNRFS Hata] İmaj dosyası açılamadı: " << img_path << std::endl;
             return 1;
         }
 
-        // Global imaj işaretçisini bağla
         g_img_file = img_file;
 
-        // 2. Superblock alanını kernel formatıyla aynı şekilde doldur.
-        g_lnr_sb.magic = LNRFS_MAGIC; // 0x4B525946
-        g_lnr_sb.total_blocks = 2048;
+        // 2. Superblock alanını dinamik blok sayısına göre doldur
+        g_lnr_sb.magic = LNRFS_MAGIC;
+        g_lnr_sb.total_blocks = total_blocks;
         g_lnr_sb.inode_table_block = 1;
-        g_lnr_sb.data_block_start = 256;
-d
+        g_lnr_sb.data_block_start = 256; // Kernel'da data_block_start dinamik okunuyorsa 2048 yapabilirsin
+        
         size_t inode_table_bytes =
             (g_lnr_sb.data_block_start - g_lnr_sb.inode_table_block) * BLOCK_SIZE;
         g_lnr_inodes.clear();
         g_lnr_inodes.resize(inode_table_bytes / sizeof(LnrfsInode));
 
-        // İmajı toplam blok boyutuna getir.
-        std::fseek(img_file, (g_lnr_sb.total_blocks * BLOCK_SIZE) - 1, SEEK_SET);
+        // 3. İmajı toplam blok boyutuna getir (2 GiB+ için fseeko kullan)
+        off_t last_byte_offset = (static_cast<off_t>(g_lnr_sb.total_blocks) * BLOCK_SIZE) - 1;
+        fseeko(img_file, last_byte_offset, SEEK_SET);
         std::fputc(0, img_file);
 
-        // 3. Dosyanın başına gidip superblock'u ve sıfır inode tablosunu yaz.
-        std::fseek(img_file, 0, SEEK_SET);
+        // 4. Dosyanın başına gidip superblock'u yaz
+        fseeko(img_file, 0, SEEK_SET);
         std::fwrite(&g_lnr_sb, sizeof(LnrfsSuperblock), 1, img_file);
 
-        // 4. Global inode tablosunu sıfırla (first_block yerine start_block kullanılıyor)
+        // 5. Global inode tablosunu sıfırla
         for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
             g_lnr_inodes[i].is_used = 0;
             g_lnr_inodes[i].is_directory = 0;
@@ -65,14 +87,14 @@ d
             g_lnr_inodes[i].filename[0] = '\0';
         }
 
-        // 5. Inode tablosunu imaj dosyasına kaydet
+        // 6. Inode tablosunu imaj dosyasına kaydet ve kapat
         lnrfs_save_image();
-
-        // 6. Dosyayı kapat
         std::fclose(img_file);
         g_img_file = nullptr;
 
-        std::cout << "[LNRFS] Disk başarıyla formatlandı ve Superblock oluşturuldu!" << std::endl;
+        std::cout << "[LNRFS] Disk başarıyla formatlandı! Kapasite: " 
+                  << (target_bytes / (1024 * 1024)) << " MiB (" 
+                  << total_blocks << " blok)" << std::endl;
         return 0;
     }
 
