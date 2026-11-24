@@ -1,5 +1,6 @@
 #define FUSE_USE_VERSION 31
 #include <fuse.h>
+#include <sys/stat.h>
 #include <iostream>
 #include <cstring>
 #include <vector>
@@ -13,7 +14,7 @@ void print_usage(const char* prog_name) {
     std::cout << "Kullanım:\n";
     std::cout << "  Mount etmek için:   " << prog_name << " -m <disk_imaji.img> <montaj_dizini> [-d]\n";
     std::cout << "  Umount etmek için:  " << prog_name << " -u <montaj_dizini>\n";
-    std::cout << "  Formatlamak için:   " << prog_name << " <disk_imaji.img> --format\n";
+    std::cout << "  Formatlamak için:   " << prog_name << " <disk_imaji.img> --format [boyut_MB]\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -63,7 +64,7 @@ int main(int argc, char* argv[]) {
         g_lnr_sb.total_blocks = total_blocks;
         g_lnr_sb.inode_table_block = 1;
         g_lnr_sb.data_block_start = 256; // Kernel'da data_block_start dinamik okunuyorsa 2048 yapabilirsin
-        
+
         size_t inode_table_bytes =
             (g_lnr_sb.data_block_start - g_lnr_sb.inode_table_block) * BLOCK_SIZE;
         g_lnr_inodes.clear();
@@ -92,8 +93,8 @@ int main(int argc, char* argv[]) {
         std::fclose(img_file);
         g_img_file = nullptr;
 
-        std::cout << "[LNRFS] Disk başarıyla formatlandı! Kapasite: " 
-                  << (target_bytes / (1024 * 1024)) << " MiB (" 
+        std::cout << "[LNRFS] Disk başarıyla formatlandı! Kapasite: "
+                  << (target_bytes / (1024 * 1024)) << " MiB ("
                   << total_blocks << " blok)" << std::endl;
         return 0;
     }
@@ -107,7 +108,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Unmount ediliyor: " << mount_point << std::endl;
         int ret = std::system(cmd.c_str());
         return ret;
-    } 
+    }
     // MOUNT İŞLEMİ (-m)
     else if (mode == "-m") {
         if (argc < 4) {
@@ -135,7 +136,7 @@ int main(int argc, char* argv[]) {
         // FUSE için argüman listesi hazırla
         std::vector<char*> fuse_argv;
         fuse_argv.push_back(argv[0]);
-        
+
         char flag_f[] = "-f"; // Ön planda tutar
         char flag_d[] = "-d"; // FUSE debug modu
 
@@ -146,7 +147,7 @@ int main(int argc, char* argv[]) {
         } else {
             std::cout << "LnrfsMountSystem arka planda başlatılıyor..." << std::endl;
         }
-        
+
         fuse_argv.push_back(argv[3]); // mount_point
 
         struct fuse_operations ops;
