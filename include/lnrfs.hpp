@@ -6,15 +6,17 @@
 #include <cstdio>
 #include <vector>
 
-#define LNRFS_MAGIC 0x4C4E5246 // "LNRF"
-#define BLOCK_SIZE 512
+#define LNRFS_MAGIC_BE 0x4C4E5246U // "LNRF" (big-endian / doğrudan okuma)
+#define LNRFS_MAGIC_LE 0x46524E4CU // "FRNL" (little-endian 4c 4e 52 46)
+#define LNRFS_MAGIC    LNRFS_MAGIC_BE
+#define BLOCK_SIZE     512U
 #define LNRFS_MAX_FILENAME 256
 
 #pragma pack(push, 1)
 
 // Çekirdekteki lnrfs_superblock_t ile birebir aynı
 struct LnrfsSuperblock {
-    uint32_t magic;              // Dosya sistemi imzası (0x4C4E5246)
+    uint32_t magic;              // Dosya sistemi imzası
     uint32_t total_blocks;       // Toplam blok sayısı
     uint32_t inode_table_block;  // Inode tablosunun başlangıç bloğu
     uint32_t data_block_start;   // Veri bloklarının başlangıç bloğu

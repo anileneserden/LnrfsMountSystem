@@ -7,21 +7,32 @@ FILE* g_img_file = nullptr;
 LnrfsSuperblock g_lnr_sb;
 std::vector<LnrfsInode> g_lnr_inodes;
 
+static bool is_valid_lnrfs_magic(uint32_t magic) {
+    return magic == LNRFS_MAGIC_BE || magic == LNRFS_MAGIC_LE;
+}
+
 bool lnrfs_load_image(const std::string& img_path) {
     g_img_path = img_path;
     g_img_file = std::fopen(img_path.c_str(), "r+b");
-    
+
     if (!g_img_file) {
         std::cerr << "Hata: Disk imaji acilamadi: " << img_path << std::endl;
         return false;
     }
 
-    // Superblock oku
-    std::fread(&g_lnr_sb, sizeof(LnrfsSuperblock), 1, g_img_file);
-
-    if (g_lnr_sb.magic != LNRFS_MAGIC) {
-        std::cerr << "Hata: Gecersiz LNRFS imaji (Magic Number uyusmuyor)!" << std::endl;
+    std::memset(&g_lnr_sb, 0, sizeof(LnrfsSuperblock));
+    if (std::fread(&g_lnr_sb, sizeof(LnrfsSuperblock), 1, g_img_file) != 1) {
+        std::cerr << "Hata: Superblock okunamadi!" << std::endl;
         std::fclose(g_img_file);
+        g_img_file = nullptr;
+        return false;
+    }
+
+    if (!is_valid_lnrfs_magic(g_lnr_sb.magic)) {
+        std::cerr << "Hata: Gecersiz LNRFS imaji (Magic Number uyusmuyor)! Okunan: 0x"
+                  << std::hex << g_lnr_sb.magic << std::dec << std::endl;
+        std::fclose(g_img_file);
+        g_img_file = nullptr;
         return false;
     }
 
@@ -38,7 +49,7 @@ bool lnrfs_load_image(const std::string& img_path) {
     std::cout << "-> Inode Tablo Bloku: " << g_lnr_sb.inode_table_block << std::endl;
 
     size_t inode_table_bytes =
-        (g_lnr_sb.data_block_start - g_lnr_sb.inode_table_block) * BLOCK_SIZE;
+        static_cast<size_t>(g_lnr_sb.data_block_start - g_lnr_sb.inode_table_block) * BLOCK_SIZE;
     size_t inode_count = inode_table_bytes / sizeof(LnrfsInode);
     if (inode_count == 0) {
         std::cerr << "Hata: LNRFS inode tablosu bos." << std::endl;
@@ -49,21 +60,22 @@ bool lnrfs_load_image(const std::string& img_path) {
     g_lnr_inodes.resize(inode_count);
 
     // Inode tablosunu çekirdeğin bildirdiği bloktan (inode_table_block * BLOCK_SIZE) oku
-    std::fseek(g_img_file, g_lnr_sb.inode_table_block * BLOCK_SIZE, SEEK_SET);
-    if (std::fread(g_lnr_inodes.data(), sizeof(LnrfsInode), inode_count, g_img_file) != inode_count) {
+    long inode_offset = static_cast<long>(g_lnr_sb.inode_table_block) * static_cast<long>(BLOCK_SIZE);
+    if (std::fseek(g_img_file, inode_offset, SEEK_SET) != 0 ||
+        std::fread(g_lnr_inodes.data(), sizeof(LnrfsInode), inode_count, g_img_file) != inode_count) {
         std::cerr << "Hata: LNRFS inode tablosu okunamadi." << std::endl;
         std::fclose(g_img_file);
         g_img_file = nullptr;
         return false;
     }
-    
+
     // --- DEBUG: Aktif inode'ları kontrol et ---
     int active_count = 0;
     for (size_t i = 0; i < g_lnr_inodes.size(); i++) {
         g_lnr_inodes[i].filename[LNRFS_MAX_FILENAME - 1] = '\0';
         if (g_lnr_inodes[i].is_used) {
-            std::cout << "[LNRFS] Aktif Dosya/Klasor Bulundu -> Index: " << i 
-                      << ", Isim: " << g_lnr_inodes[i].filename 
+            std::cout << "[LNRFS] Aktif Dosya/Klasor Bulundu -> Index: " << i
+                      << ", Isim: " << g_lnr_inodes[i].filename
                       << ", Boyut: " << g_lnr_inodes[i].size << " bayt" << std::endl;
             active_count++;
         }
@@ -82,9 +94,10 @@ void lnrfs_save_image() {
     std::fwrite(&g_lnr_sb, sizeof(LnrfsSuperblock), 1, g_img_file);
 
     // Inode tablosunu doğru bloğa yaz
-    std::fseek(g_img_file, g_lnr_sb.inode_table_block * BLOCK_SIZE, SEEK_SET);
+    long inode_offset = static_cast<long>(g_lnr_sb.inode_table_block) * static_cast<long>(BLOCK_SIZE);
+    std::fseek(g_img_file, inode_offset, SEEK_SET);
     std::fwrite(g_lnr_inodes.data(), sizeof(LnrfsInode), g_lnr_inodes.size(), g_img_file);
-    
+
     std::fflush(g_img_file);
 }
 
